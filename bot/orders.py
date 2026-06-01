@@ -3,7 +3,8 @@
 from dataclasses import dataclass
 from decimal import Decimal
 import logging
-from typing import Any, Protocol
+import time
+from typing import Any, Callable, Protocol
 
 from .validators import (
     validate_order_type,
@@ -15,6 +16,8 @@ from .validators import (
 
 class FuturesOrderClient(Protocol):
     def create_futures_order(self, **params: Any) -> dict[str, Any]: ...
+
+    def get_futures_order(self, **params: Any) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -89,9 +92,21 @@ class OrderResult:
 
 
 class OrderService:
-    def __init__(self, client: FuturesOrderClient, logger: logging.Logger) -> None:
+    _TERMINAL_STATUSES = {"FILLED", "CANCELED", "EXPIRED", "REJECTED"}
+
+    def __init__(
+        self,
+        client: FuturesOrderClient,
+        logger: logging.Logger,
+        market_refresh_attempts: int = 3,
+        market_refresh_delay: float = 0.1,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         self._client = client
         self._logger = logger
+        self._market_refresh_attempts = market_refresh_attempts
+        self._market_refresh_delay = market_refresh_delay
+        self._sleep = sleep
 
     def place_order(self, order: OrderRequest) -> OrderResult:
         params = order.to_api_params()
@@ -104,13 +119,49 @@ class OrderService:
         )
         response = self._client.create_futures_order(**params)
         self._logger.info("Response: %s", response)
+        if order.order_type == "MARKET":
+            response = self._refresh_market_order(order.symbol, response)
         result = OrderResult.from_response(response)
         self._logger.info("Order completed successfully: orderId=%s", result.order_id)
         return result
+
+    def _refresh_market_order(
+        self, symbol: str, initial_response: dict[str, Any]
+    ) -> dict[str, Any]:
+        order_id = initial_response.get("orderId")
+        if order_id is None:
+            self._logger.warning("MARKET order response did not include an orderId")
+            return initial_response
+
+        latest_response = initial_response
+        for attempt in range(self._market_refresh_attempts):
+            if attempt:
+                self._sleep(self._market_refresh_delay)
+            try:
+                latest_response = self._client.get_futures_order(
+                    symbol=symbol, orderId=order_id
+                )
+            except Exception as exc:
+                self._logger.warning(
+                    "Unable to refresh MARKET order status for orderId=%s: %s",
+                    order_id,
+                    exc,
+                )
+                return latest_response
+
+            self._logger.info(
+                "MARKET order status refresh %s/%s: %s",
+                attempt + 1,
+                self._market_refresh_attempts,
+                latest_response,
+            )
+            if str(latest_response.get("status", "")).upper() in self._TERMINAL_STATUSES:
+                break
+
+        return latest_response
 
 
 def _decimal_text(value: Decimal | None) -> str:
     if value is None:
         return ""
     return format(value, "f")
-

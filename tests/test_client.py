@@ -17,6 +17,9 @@ class FakeBinanceClient:
         base_url = self.FUTURES_TESTNET_URL if self.testnet else self.FUTURES_URL
         return f"{base_url}/v{version}/{path}"
 
+    def futures_get_order(self, **params):
+        return params
+
 
 class LiveResolvingBinanceClient(FakeBinanceClient):
     def _create_futures_api_uri(self, path, version=1):
@@ -43,7 +46,15 @@ class BinanceTradingClientTests(unittest.TestCase):
             with self.assertRaisesRegex(BinanceClientError, "Refusing"):
                 BinanceTradingClient("key", "secret")
 
+    def test_get_futures_order_delegates_to_binance_client(self):
+        with patch.dict(sys.modules, fake_binance_modules(FakeBinanceClient)):
+            client = BinanceTradingClient("key", "secret")
+
+        self.assertEqual(
+            client.get_futures_order(symbol="BTCUSDT", orderId=123),
+            {"symbol": "BTCUSDT", "orderId": 123},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
-

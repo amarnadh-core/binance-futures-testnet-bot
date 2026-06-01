@@ -15,6 +15,7 @@ logging, error handling, and automated tests.
 - Log order activity and API responses to a file
 - Handle Binance API errors
 - Ensure orders are routed only to Binance Futures Testnet
+- Refresh MARKET order results to report fill details when available
 - Run automated unit tests without sending real API requests
 
 ## Setup
@@ -180,6 +181,8 @@ OK
 - The client verifies that Futures requests resolve to
   `https://testnet.binancefuture.com/fapi` before allowing an order.
 - LIMIT orders use `GTC` (Good Till Cancelled).
+- MARKET order acknowledgements are refreshed briefly to report the latest
+  execution status, quantity, and average price when available.
 - Input is validated before requests are submitted.
 - Binance exchange rules, such as minimum quantity and price filters, are
   enforced by the exchange and returned as user-facing API errors.

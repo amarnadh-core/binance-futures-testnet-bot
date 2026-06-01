@@ -32,3 +32,9 @@ class BinanceTradingClient:
             return self._client.futures_create_order(**params)
         except Exception as exc:
             raise BinanceClientError(f"Binance API request failed: {exc}") from exc
+
+    def get_futures_order(self, **params: Any) -> dict[str, Any]:
+        try:
+            return self._client.futures_get_order(**params)
+        except Exception as exc:
+            raise BinanceClientError(f"Binance API request failed: {exc}") from exc
